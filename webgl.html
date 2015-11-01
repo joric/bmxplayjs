@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bmxplay</title>
+
+<style>
+* { -webkit-user-select: none;	-moz-user-select: none;	-ms-user-select: none;	user-select: none; }
+body, html { width: 100%; height: 100%; border: 0px; padding: 0px; margin: 0px; overflow: hidden; }
+#canvas { width: 100%; height: 100%; padding: 0px; margin: 0px; border: 0px; left:0px; top: 0px; }
+#player { position: absolute; padding: 18px; }
+#play { width: 70px; }
+#range { width: 270px; margin: 10px 0 10px 0; }
+#playlist { width: 200px; }
+</style>
+
+<script src="bmxplay.min.js"></script>
+
+<script id="shader-vs" type="x-shader/x-fragment">
+attribute vec3 gPosition;
+attribute vec2 gTexCoord0;
+
+uniform sampler2D heightMap;
+uniform float vertexYOffset;
+uniform mat4 worldViewProjection;
+uniform float verticalScale;
+uniform mat4 normalMatrix;
+
+varying vec2 vTexCoord;
+varying vec3 vLighting;
+
+void main() {
+	float x = pow(256.0, gTexCoord0.x - 1.0);
+	float y = gTexCoord0.y + vertexYOffset;
+	vec4 sample = texture2D(heightMap, vec2(x, y));
+	vec4 vPosition = vec4(gPosition.x, gPosition.y + verticalScale * sample.a, gPosition.z, 1.0);
+	gl_Position = worldViewProjection * vPosition;
+	vTexCoord = gTexCoord0;
+
+#if (1)
+
+	vec2 uv = vec2(x,y);
+	float u = 1.0 / 256.0;
+
+	float c1 = texture2D(heightMap, uv + vec2(-u, 0)).a;
+	float c2 = texture2D(heightMap, uv + vec2( u, 0)).a;
+	float c3 = texture2D(heightMap, uv + vec2( 0,-u)).a;
+	float c4 = texture2D(heightMap, uv + vec2( 0, u)).a;
+
+	vec3 va = normalize(vec3(1.0, 0.0, c2-c1));
+	vec3 vb = normalize(vec3(0.0, 1.0, c4-c3));
+	vec3 normal = cross(va,vb).rbg;
+
+	vec3 lightDir = vec3(5.0, 0.0, 0.0);
+
+#else // Sobel filter (slower)
+
+	vec2 uv = vec2(x,y);
+	float u = 1.0 / 256.0;
+	float s[9];
+
+	s[0] = texture2D(heightMap, uv + vec2(-u,-u)).a;
+	s[1] = texture2D(heightMap, uv + vec2( 0,-u)).a;
+	s[2] = texture2D(heightMap, uv + vec2( u,-u)).a;
+	s[3] = texture2D(heightMap, uv + vec2(-u, 0)).a;
+	s[4] = texture2D(heightMap, uv + vec2( 0, 0)).a;
+	s[5] = texture2D(heightMap, uv + vec2( u, 0)).a;
+	s[6] = texture2D(heightMap, uv + vec2(-u, u)).a;
+	s[7] = texture2D(heightMap, uv + vec2( 0, u)).a;
+	s[8] = texture2D(heightMap, uv + vec2( u, u)).a;
+
+	vec3 n;
+	n.x = -(s[2]-s[0]+2.0*(s[5]-s[3])+s[8]-s[6]);
+	n.y = -(s[6]-s[0]+2.0*(s[7]-s[1])+s[8]-s[2]);
+	n.z = 1.0;
+
+	vec3 normal = normalize(n).rbg;
+
+	vec3 lightDir = vec3(1.0, 0.0, 0.0);
+
+#endif
+
+	vec3 ambientColor = vec3(0.5, 0.5, 0.5);
+	vec3 lightColor = vec3(1.5, 1.5, 1.5);
+
+	vec4 transformedNormal = normalMatrix * vec4(normal, 1.0);
+	float lightAmp = max(dot(transformedNormal.xyz, lightDir), 0.0);
+	vLighting = ambientColor + (lightColor * lightAmp);
+}
+</script>
+
+<script id="shader-fs" type="x-shader/x-vertex">
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+uniform sampler2D heightMap;
+varying vec2 vTexCoord;
+varying vec3 vLighting;
+uniform float yoffset;
+
+vec3 HSLtoRGB(in float h, in float s, in float l) {
+	vec3 rgb = clamp(abs(mod(h+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0);
+	return l + s * (rgb-0.5)*(1.0-abs(2.0*l-1.0));
+}
+
+void main() {
+	float x = pow(256.0, vTexCoord.x - 1.0);
+	float y = vTexCoord.y + yoffset;
+	float k = texture2D(heightMap, vec2(x, y)).a;
+	if (k==0.0 || (vTexCoord.y>0.99 || vTexCoord.y<0.01)) {
+		discard;
+	}
+	gl_FragColor = vec4(HSLtoRGB((1.0-k)*6.0, 1.0, 0.5) * vLighting, 1.0);
+//	gl_FragColor = vec4(vec3(k,k,k)*vLighting, 1.0);
+}
+</script>
+
+<script>
+var o3djs = o3djs || {};
+
+o3djs.shader = o3djs.shader || {};
+
+o3djs.shader.loadFromScriptNodes = function(gl, vertexScriptName, fragmentScriptName) {
+	var vertexScript = document.getElementById(vertexScriptName);
+	var fragmentScript = document.getElementById(fragmentScriptName);
+	if (!vertexScript || !fragmentScript) {
+		return null;
+	}
+	return new o3djs.shader.Shader(gl, vertexScript.text, fragmentScript.text);
+}
+
+o3djs.shader.glslNameToJs_ = function(name) {
+	return name.replace(/_(.)/g, function(_, p1) { return p1.toUpperCase(); });
+}
+
+o3djs.shader.Shader = function(gl, vertex, fragment) {
+	this.program = gl.createProgram();
+	this.gl = gl;
+	this.loaded = false;
+
+	var vs = this.loadShader(this.gl.VERTEX_SHADER, vertex);
+	if (vs == null) {
+		return;
+	}
+
+	this.gl.attachShader(this.program, vs);
+	this.gl.deleteShader(vs);
+
+	var fs = this.loadShader(this.gl.FRAGMENT_SHADER, fragment);
+	if (fs == null) {
+		return;
+	}
+
+	this.gl.attachShader(this.program, fs);
+	this.gl.deleteShader(fs);
+
+	this.gl.linkProgram(this.program);
+	this.gl.useProgram(this.program);
+
+	// Check the link status
+	var linked = this.gl.getProgramParameter(this.program, this.gl.LINK_STATUS);
+	if (!linked) {
+		var infoLog = this.gl.getProgramInfoLog(this.program);
+		console.log("Error linking program:\n" + infoLog);
+		this.gl.deleteProgram(this.program);
+		this.program = null;
+		return;
+	}
+
+	// find uniforms and attributes
+	var re = /(uniform|attribute)\s+\S+\s+(\S+)\s*;/g;
+	var match = null;
+	while ((match = re.exec(vertex + '\n' + fragment)) != null) {
+		var glslName = match[2];
+		var jsName = o3djs.shader.glslNameToJs_(glslName);
+		var loc = -1;
+		if (match[1] == "uniform") {
+			this[jsName + "Loc"] = this.getUniform(glslName);
+		} else if (match[1] == "attribute") {
+			this[jsName + "Loc"] = this.getAttribute(glslName);
+		}
+		if (loc >= 0) {
+			this[jsName + "Loc"] = loc;
+		}
+	}
+
+	this.loaded = true;
+}
+
+o3djs.shader.Shader.prototype.bind = function() {
+	this.gl.useProgram(this.program);
+}
+
+o3djs.shader.Shader.prototype.loadShader = function(type, shaderSrc) {
+	var shader = this.gl.createShader(type);
+	if (shader == null) {
+		return null;
+	}
+
+	this.gl.shaderSource(shader, shaderSrc);
+	this.gl.compileShader(shader);
+	if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
+		var infoLog = this.gl.getShaderInfoLog(shader);
+		console.log("Error compiling shader:\n" + infoLog);
+		this.gl.deleteShader(shader);
+		return null;
+	}
+	return shader;
+}
+
+o3djs.shader.Shader.prototype.getAttribute = function(name) {
+	return this.gl.getAttribLocation(this.program, name);
+};
+
+o3djs.shader.Shader.prototype.getUniform = function(name) {
+	return this.gl.getUniformLocation(this.program, name);
+};
+
+function CameraController(element, opt_canvas, opt_context) {
+	var controller = this;
+	this.onchange = null;
+	this.xRot = 0;
+	this.yRot = 0;
+	this.zoom = 1.0;
+	this.scaleFactor = 3.0;
+	this.dragging = false;
+	this.curX = 0;
+	this.curY = 0;
+
+	if (opt_canvas) {
+		this.canvas_ = opt_canvas;
+	}
+
+	if (opt_context) {
+		this.context_ = opt_context;
+	}
+
+	element.wheel = function(d) {
+		controller.zoom *= d<0 ? 1.05 : 0.95;
+		controller.zoom = Math.min(Math.max(controller.zoom, 0.25), 7.0);
+	}
+
+	element.addEventListener("DOMMouseScroll", function(e) { 
+		element.wheel(-e.detail);
+	});
+
+	element.onmousewheel = function(e) {
+		element.wheel(e.wheelDelta || -e.detail);
+	}
+
+	// Assign a mouse down handler to the HTML element.
+	element.onmousedown = function(ev) {
+		controller.curX = ev.clientX;
+		controller.curY = ev.clientY;
+		var dragging = false;
+		if (controller.canvas_ && controller.context_) {
+			var rect = controller.canvas_.getBoundingClientRect();
+			// Transform the event's x and y coordinates into the coordinate
+			// space of the canvas
+			var canvasRelativeX = ev.pageX - rect.left;
+			var canvasRelativeY = ev.pageY - rect.top;
+			var canvasWidth = controller.canvas_.width;
+			var canvasHeight = controller.canvas_.height;
+
+			// Read back a small portion of the frame buffer around this point
+			if (canvasRelativeX > 0 && canvasRelativeX < canvasWidth &&
+				canvasRelativeY > 0 && canvasRelativeY < canvasHeight) {
+				var pixels = controller.context_.readPixels(canvasRelativeX,
+					canvasHeight - canvasRelativeY, 1, 1,
+					controller.context_.RGBA, controller.context_.UNSIGNED_BYTE);
+				if (pixels) {
+					// See whether this pixel has an alpha value of >= about 10%
+					if (pixels[3] > (255.0 / 10.0)) {
+						dragging = true;
+					}
+				}
+			}
+		} else {
+			dragging = true;
+		}
+
+		controller.dragging = dragging;
+	};
+
+	// Assign a mouse up handler to the HTML element.
+	element.onmouseup = function(ev) {
+		controller.dragging = false;
+	};
+
+	// Assign a mouse move handler to the HTML element.
+	element.onmousemove = function(ev) {
+		if (controller.dragging) {
+			// Determine how far we have moved since the last mouse move
+			// event.
+			var curX = ev.clientX;
+			var curY = ev.clientY;
+			var deltaX = (controller.curX - curX) / controller.scaleFactor;
+			var deltaY = (controller.curY - curY) / controller.scaleFactor;
+			controller.curX = curX;
+			controller.curY = curY;
+			// Update the X and Y rotation angles based on the mouse motion.
+			controller.yRot = (controller.yRot + deltaX) % 360;
+			controller.xRot = (controller.xRot + deltaY);
+			// Clamp the X rotation to prevent the camera from going upside
+			// down.
+			if (controller.xRot < -90) {
+				controller.xRot = -90;
+			} else if (controller.xRot > 90) {
+				controller.xRot = 90;
+			}
+			// Send the onchange event to any listener.
+			if (controller.onchange != null) {
+				controller.onchange(controller.xRot, controller.yRot);
+			}
+		}
+	};
+}
+
+function Matrix4x4() {
+	this.elements = Array(16);
+	this.loadIdentity();
+}
+
+Matrix4x4.prototype = {
+
+	scale: function (sx, sy, sz) {
+		this.elements[0*4+0] *= sx;
+		this.elements[0*4+1] *= sx;
+		this.elements[0*4+2] *= sx;
+		this.elements[0*4+3] *= sx;
+		this.elements[1*4+0] *= sy;
+		this.elements[1*4+1] *= sy;
+		this.elements[1*4+2] *= sy;
+		this.elements[1*4+3] *= sy;
+		this.elements[2*4+0] *= sz;
+		this.elements[2*4+1] *= sz;
+		this.elements[2*4+2] *= sz;
+		this.elements[2*4+3] *= sz;
+		return this;
+	},
+
+	translate: function (tx, ty, tz) {
+		this.elements[3*4+0] += this.elements[0*4+0] * tx + this.elements[1*4+0] * ty + this.elements[2*4+0] * tz;
+		this.elements[3*4+1] += this.elements[0*4+1] * tx + this.elements[1*4+1] * ty + this.elements[2*4+1] * tz;
+		this.elements[3*4+2] += this.elements[0*4+2] * tx + this.elements[1*4+2] * ty + this.elements[2*4+2] * tz;
+		this.elements[3*4+3] += this.elements[0*4+3] * tx + this.elements[1*4+3] * ty + this.elements[2*4+3] * tz;
+		return this;
+	},
+
+	rotate: function (angle, x, y, z) {
+		var mag = Math.sqrt(x*x + y*y + z*z);
+		var sinAngle = Math.sin(angle * Math.PI / 180.0);
+		var cosAngle = Math.cos(angle * Math.PI / 180.0);
+
+		if (mag > 0) {
+			var xx, yy, zz, xy, yz, zx, xs, ys, zs;
+			var oneMinusCos;
+			var rotMat;
+
+			x /= mag;
+			y /= mag;
+			z /= mag;
+	
+			xx = x * x;
+			yy = y * y;
+			zz = z * z;
+			xy = x * y;
+			yz = y * z;
+			zx = z * x;
+			xs = x * sinAngle;
+			ys = y * sinAngle;
+			zs = z * sinAngle;
+			oneMinusCos = 1.0 - cosAngle;
+	
+			rotMat = new Matrix4x4();
+			rotMat.elements[0*4+0] = (oneMinusCos * xx) + cosAngle;
+			rotMat.elements[0*4+1] = (oneMinusCos * xy) - zs;
+			rotMat.elements[0*4+2] = (oneMinusCos * zx) + ys;
+			rotMat.elements[0*4+3] = 0.0;
+			rotMat.elements[1*4+0] = (oneMinusCos * xy) + zs;
+			rotMat.elements[1*4+1] = (oneMinusCos * yy) + cosAngle;
+			rotMat.elements[1*4+2] = (oneMinusCos * yz) - xs;
+			rotMat.elements[1*4+3] = 0.0;
+			rotMat.elements[2*4+0] = (oneMinusCos * zx) - ys;
+			rotMat.elements[2*4+1] = (oneMinusCos * yz) + xs;
+			rotMat.elements[2*4+2] = (oneMinusCos * zz) + cosAngle;
+			rotMat.elements[2*4+3] = 0.0;
+			rotMat.elements[3*4+0] = 0.0;
+			rotMat.elements[3*4+1] = 0.0;
+			rotMat.elements[3*4+2] = 0.0;
+			rotMat.elements[3*4+3] = 1.0;
+
+			rotMat = rotMat.multiply(this);
+			this.elements = rotMat.elements;
+		}
+		return this;
+	},
+
+	frustum: function (left, right, bottom, top, nearZ, farZ) {
+		var deltaX = right - left;
+		var deltaY = top - bottom;
+		var deltaZ = farZ - nearZ;
+		var frust;
+
+		if ( (nearZ <= 0.0) || (farZ <= 0.0) || (deltaX <= 0.0) || (deltaY <= 0.0) || (deltaZ <= 0.0) ) {
+			return this;
+		}
+
+		frust = new Matrix4x4();
+
+		frust.elements[0*4+0] = 2.0 * nearZ / deltaX;
+		frust.elements[0*4+1] = frust.elements[0*4+2] = frust.elements[0*4+3] = 0.0;
+		frust.elements[1*4+1] = 2.0 * nearZ / deltaY;
+		frust.elements[1*4+0] = frust.elements[1*4+2] = frust.elements[1*4+3] = 0.0;
+		frust.elements[2*4+0] = (right + left) / deltaX;
+		frust.elements[2*4+1] = (top + bottom) / deltaY;
+		frust.elements[2*4+2] = -(nearZ + farZ) / deltaZ;
+		frust.elements[2*4+3] = -1.0;
+		frust.elements[3*4+2] = -2.0 * nearZ * farZ / deltaZ;
+		frust.elements[3*4+0] = frust.elements[3*4+1] = frust.elements[3*4+3] = 0.0;
+
+		frust = frust.multiply(this);
+		this.elements = frust.elements;
+		return this;
+	},
+
+	perspective: function (fovy, aspect, nearZ, farZ) {
+		var frustumH = Math.tan(fovy / 360.0 * Math.PI) * nearZ;
+		var frustumW = frustumH * aspect;
+		return this.frustum(-frustumW, frustumW, -frustumH, frustumH, nearZ, farZ);
+	},
+
+	ortho: function (left, right, bottom, top, nearZ, farZ) {
+		var deltaX = right - left;
+		var deltaY = top - bottom;
+		var deltaZ = farZ - nearZ;
+
+		var ortho = new Matrix4x4();
+
+		if ( (deltaX == 0.0) || (deltaY == 0.0) || (deltaZ == 0.0) ) {
+			return this;
+		}
+
+		ortho.elements[0*4+0] = 2.0 / deltaX;
+		ortho.elements[3*4+0] = -(right + left) / deltaX;
+		ortho.elements[1*4+1] = 2.0 / deltaY;
+		ortho.elements[3*4+1] = -(top + bottom) / deltaY;
+		ortho.elements[2*4+2] = -2.0 / deltaZ;
+		ortho.elements[3*4+2] = -(nearZ + farZ) / deltaZ;
+
+		ortho = ortho.multiply(this);
+		this.elements = ortho.elements;
+
+		return this;
+	},
+
+	multiply: function (right) {
+		var tmp = new Matrix4x4();
+
+		for (var i = 0; i < 4; i++) {
+			tmp.elements[i*4+0] = (this.elements[i*4+0] * right.elements[0*4+0]) + (this.elements[i*4+1] * right.elements[1*4+0])
+				+ (this.elements[i*4+2] * right.elements[2*4+0]) + (this.elements[i*4+3] * right.elements[3*4+0]);
+			tmp.elements[i*4+1] = (this.elements[i*4+0] * right.elements[0*4+1]) + (this.elements[i*4+1] * right.elements[1*4+1]) 
+				+ (this.elements[i*4+2] * right.elements[2*4+1]) + (this.elements[i*4+3] * right.elements[3*4+1]);
+			tmp.elements[i*4+2] = (this.elements[i*4+0] * right.elements[0*4+2]) + (this.elements[i*4+1] * right.elements[1*4+2]) 
+				+ (this.elements[i*4+2] * right.elements[2*4+2]) + (this.elements[i*4+3] * right.elements[3*4+2]);
+			tmp.elements[i*4+3] = (this.elements[i*4+0] * right.elements[0*4+3]) + (this.elements[i*4+1] * right.elements[1*4+3]) 
+				+ (this.elements[i*4+2] * right.elements[2*4+3]) + (this.elements[i*4+3] * right.elements[3*4+3]);
+		}
+
+		this.elements = tmp.elements;
+		return this;
+	},
+
+	copy: function () {
+		var tmp = new Matrix4x4();
+		for (var i = 0; i < 16; i++) {
+			tmp.elements[i] = this.elements[i];
+		}
+		return tmp;
+	},
+
+	get: function (row, col) {
+		return this.elements[4*row+col];
+	},
+
+	// In-place inversion
+	invert: function () {
+		var tmp_0 = this.get(2,2) * this.get(3,3);
+		var tmp_1 = this.get(3,2) * this.get(2,3);
+		var tmp_2 = this.get(1,2) * this.get(3,3);
+		var tmp_3 = this.get(3,2) * this.get(1,3);
+		var tmp_4 = this.get(1,2) * this.get(2,3);
+		var tmp_5 = this.get(2,2) * this.get(1,3);
+		var tmp_6 = this.get(0,2) * this.get(3,3);
+		var tmp_7 = this.get(3,2) * this.get(0,3);
+		var tmp_8 = this.get(0,2) * this.get(2,3);
+		var tmp_9 = this.get(2,2) * this.get(0,3);
+		var tmp_10 = this.get(0,2) * this.get(1,3);
+		var tmp_11 = this.get(1,2) * this.get(0,3);
+		var tmp_12 = this.get(2,0) * this.get(3,1);
+		var tmp_13 = this.get(3,0) * this.get(2,1);
+		var tmp_14 = this.get(1,0) * this.get(3,1);
+		var tmp_15 = this.get(3,0) * this.get(1,1);
+		var tmp_16 = this.get(1,0) * this.get(2,1);
+		var tmp_17 = this.get(2,0) * this.get(1,1);
+		var tmp_18 = this.get(0,0) * this.get(3,1);
+		var tmp_19 = this.get(3,0) * this.get(0,1);
+		var tmp_20 = this.get(0,0) * this.get(2,1);
+		var tmp_21 = this.get(2,0) * this.get(0,1);
+		var tmp_22 = this.get(0,0) * this.get(1,1);
+		var tmp_23 = this.get(1,0) * this.get(0,1);
+
+		var t0 = ((tmp_0 * this.get(1,1) + tmp_3 * this.get(2,1) + tmp_4 * this.get(3,1)) - (tmp_1 * this.get(1,1) + tmp_2 * this.get(2,1) + tmp_5 * this.get(3,1)));
+		var t1 = ((tmp_1 * this.get(0,1) + tmp_6 * this.get(2,1) + tmp_9 * this.get(3,1)) - (tmp_0 * this.get(0,1) + tmp_7 * this.get(2,1) + tmp_8 * this.get(3,1)));
+		var t2 = ((tmp_2 * this.get(0,1) + tmp_7 * this.get(1,1) + tmp_10 * this.get(3,1)) - (tmp_3 * this.get(0,1) + tmp_6 * this.get(1,1) + tmp_11 * this.get(3,1)));
+		var t3 = ((tmp_5 * this.get(0,1) + tmp_8 * this.get(1,1) + tmp_11 * this.get(2,1)) - (tmp_4 * this.get(0,1) + tmp_9 * this.get(1,1) + tmp_10 * this.get(2,1)));
+
+		var d = 1.0 / (this.get(0,0) * t0 + this.get(1,0) * t1 + this.get(2,0) * t2 + this.get(3,0) * t3);
+
+		var out_00 = d * t0;
+		var out_01 = d * t1;
+		var out_02 = d * t2;
+		var out_03 = d * t3;
+
+		var out_10 = d * ((tmp_1 * this.get(1,0) + tmp_2 * this.get(2,0) + tmp_5 * this.get(3,0)) - (tmp_0 * this.get(1,0) + tmp_3 * this.get(2,0) + tmp_4 * this.get(3,0)));
+		var out_11 = d * ((tmp_0 * this.get(0,0) + tmp_7 * this.get(2,0) + tmp_8 * this.get(3,0)) - (tmp_1 * this.get(0,0) + tmp_6 * this.get(2,0) + tmp_9 * this.get(3,0)));
+		var out_12 = d * ((tmp_3 * this.get(0,0) + tmp_6 * this.get(1,0) + tmp_11 * this.get(3,0)) - (tmp_2 * this.get(0,0) + tmp_7 * this.get(1,0) + tmp_10 * this.get(3,0)));
+		var out_13 = d * ((tmp_4 * this.get(0,0) + tmp_9 * this.get(1,0) + tmp_10 * this.get(2,0)) - (tmp_5 * this.get(0,0) + tmp_8 * this.get(1,0) + tmp_11 * this.get(2,0)));
+		var out_20 = d * ((tmp_12 * this.get(1,3) + tmp_15 * this.get(2,3) + tmp_16 * this.get(3,3)) - (tmp_13 * this.get(1,3) + tmp_14 * this.get(2,3) + tmp_17 * this.get(3,3)));
+		var out_21 = d * ((tmp_13 * this.get(0,3) + tmp_18 * this.get(2,3) + tmp_21 * this.get(3,3)) - (tmp_12 * this.get(0,3) + tmp_19 * this.get(2,3) + tmp_20 * this.get(3,3)));
+		var out_22 = d * ((tmp_14 * this.get(0,3) + tmp_19 * this.get(1,3) + tmp_22 * this.get(3,3)) - (tmp_15 * this.get(0,3) + tmp_18 * this.get(1,3) + tmp_23 * this.get(3,3)));
+		var out_23 = d * ((tmp_17 * this.get(0,3) + tmp_20 * this.get(1,3) + tmp_23 * this.get(2,3)) - (tmp_16 * this.get(0,3) + tmp_21 * this.get(1,3) + tmp_22 * this.get(2,3)));
+		var out_30 = d * ((tmp_14 * this.get(2,2) + tmp_17 * this.get(3,2) + tmp_13 * this.get(1,2)) - (tmp_16 * this.get(3,2) + tmp_12 * this.get(1,2) + tmp_15 * this.get(2,2)));
+		var out_31 = d * ((tmp_20 * this.get(3,2) + tmp_12 * this.get(0,2) + tmp_19 * this.get(2,2)) - (tmp_18 * this.get(2,2) + tmp_21 * this.get(3,2) + tmp_13 * this.get(0,2)));
+		var out_32 = d * ((tmp_18 * this.get(1,2) + tmp_23 * this.get(3,2) + tmp_15 * this.get(0,2)) - (tmp_22 * this.get(3,2) + tmp_14 * this.get(0,2) + tmp_19 * this.get(1,2)));
+		var out_33 = d * ((tmp_22 * this.get(2,2) + tmp_16 * this.get(0,2) + tmp_21 * this.get(1,2)) - (tmp_20 * this.get(1,2) + tmp_23 * this.get(2,2) + tmp_17 * this.get(0,2)));
+
+		this.elements[0*4+0] = out_00;
+		this.elements[0*4+1] = out_01;
+		this.elements[0*4+2] = out_02;
+		this.elements[0*4+3] = out_03;
+		this.elements[1*4+0] = out_10;
+		this.elements[1*4+1] = out_11;
+		this.elements[1*4+2] = out_12;
+		this.elements[1*4+3] = out_13;
+		this.elements[2*4+0] = out_20;
+		this.elements[2*4+1] = out_21;
+		this.elements[2*4+2] = out_22;
+		this.elements[2*4+3] = out_23;
+		this.elements[3*4+0] = out_30;
+		this.elements[3*4+1] = out_31;
+		this.elements[3*4+2] = out_32;
+		this.elements[3*4+3] = out_33;
+		return this;
+	},
+
+	// Returns new matrix which is the inverse of this
+	inverse: function () {
+		var tmp = this.copy();
+		return tmp.invert();
+	},
+	
+	// In-place transpose
+	transpose: function () {
+		var tmp = this.elements[0*4+1];
+		this.elements[0*4+1] = this.elements[1*4+0];
+		this.elements[1*4+0] = tmp;
+		tmp = this.elements[0*4+2];
+		this.elements[0*4+2] = this.elements[2*4+0];
+		this.elements[2*4+0] = tmp;
+		tmp = this.elements[0*4+3];
+		this.elements[0*4+3] = this.elements[3*4+0];
+		this.elements[3*4+0] = tmp;
+		tmp = this.elements[1*4+2];
+		this.elements[1*4+2] = this.elements[2*4+1];
+		this.elements[2*4+1] = tmp;
+		tmp = this.elements[1*4+3];
+		this.elements[1*4+3] = this.elements[3*4+1];
+		this.elements[3*4+1] = tmp;
+		tmp = this.elements[2*4+3];
+		this.elements[2*4+3] = this.elements[3*4+2];
+		this.elements[3*4+2] = tmp;
+		return this;
+	},
+
+	loadIdentity: function () {
+		for (var i = 0; i < 16; i++) {
+			this.elements[i] = 0;
+		}
+		this.elements[0*4+0] = 1.0;
+		this.elements[1*4+1] = 1.0;
+		this.elements[2*4+2] = 1.0;
+		this.elements[3*4+3] = 1.0;
+		return this;
+	}
+};
+
+window.onload = function() {
+
+	document.getElementById("playlist").onchange = function() { loadSong(this.value); };
+	document.getElementById("range").onmousedown = function() { rangeUpdate = false; };
+	document.getElementById("range").onchange = function() { player.SetPos(this.value); rangeUpdate = true; };
+	document.getElementById("play").onclick = function() { this.value = ( player.IsPlaying() ? player.Stop() : player.Play() ) ? "Stop" : "Play"; }
+
+	var gl = null;
+	var canvas;
+	var texture;
+	var TEXTURE_HEIGHT = 256;
+	var frequencyBinCount = TEXTURE_HEIGHT;
+	var freqByteData = 0;
+	var yoffset = 0;
+	var shaderProgram = null;
+	var sonogram3DIBO;
+	var cameraController;
+
+	var model = new Matrix4x4();
+	var view = new Matrix4x4();
+	var projection = new Matrix4x4();
+
+	function initGL() {
+		canvas = document.getElementById("canvas");
+		resizeCanvas();
+
+		try {
+			gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+		}
+		catch(e) {
+		}
+
+		if (!gl) {
+			return;
+		}
+
+		sonogram3DWidth = 256;
+		sonogram3DHeight = 256;
+		sonogram3DGeometrySize = 10;
+
+		backgroundColor = [0,0,0,1]
+		//backgroundColor = [1,1,1,1]
+		foregroundColor = [63.0 / 255.0, 39.0 / 255.0, 0.0 / 255.0, 1.0];
+
+		// init camera
+		cameraController = new CameraController(canvas);
+		cameraController.xRot = -25;
+		cameraController.yRot = 35;
+
+		// create texture
+		freqByteData = new Uint8Array(frequencyBinCount);
+		texture = gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		var tmp = new Uint8Array(freqByteData.length * TEXTURE_HEIGHT);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, freqByteData.length, TEXTURE_HEIGHT, 0, gl.ALPHA, gl.UNSIGNED_BYTE, tmp);
+
+		// Initialization for the 3D visualizations
+		var numVertices = sonogram3DWidth * sonogram3DHeight;
+
+		vertices = new Float32Array(numVertices * 3);
+		texCoords = new Float32Array(numVertices * 2);
+
+		for (var z = 0; z < sonogram3DHeight; z++) {
+			for (var x = 0; x < sonogram3DWidth; x++) {
+				vertices[3 * (sonogram3DWidth * z + x) + 0] = sonogram3DGeometrySize * (x - sonogram3DWidth / 2) / sonogram3DWidth;
+				vertices[3 * (sonogram3DWidth * z + x) + 1] = 0;
+				vertices[3 * (sonogram3DWidth * z + x) + 2] = sonogram3DGeometrySize * (z - sonogram3DHeight / 2) / sonogram3DHeight;
+				texCoords[2 * (sonogram3DWidth * z + x) + 0] = x / (sonogram3DWidth - 1);
+				texCoords[2 * (sonogram3DWidth * z + x) + 1] = z / (sonogram3DHeight - 1);
+			}
+		}
+
+		vbo3DTexCoordOffset = vertices.byteLength;
+
+		// Create the vertices and texture coordinates
+		sonogram3DVBO = gl.createBuffer();
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, sonogram3DVBO);
+		gl.bufferData(gl.ARRAY_BUFFER, vbo3DTexCoordOffset + texCoords.byteLength, gl.STATIC_DRAW);
+		gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices);
+		gl.bufferSubData(gl.ARRAY_BUFFER, vbo3DTexCoordOffset, texCoords);
+
+		// Now generate indices
+		sonogram3DNumIndices = (sonogram3DWidth - 1) * (sonogram3DHeight - 1) * 6;
+
+		var indices = new Uint16Array(sonogram3DNumIndices);
+		// We need to use TRIANGLES instead of for example TRIANGLE_STRIP
+		// because we want to make one draw call instead of hundreds per
+		// frame, and unless we produce degenerate triangles (which are very
+		// ugly) we won't be able to split the rows.
+		var idx = 0;
+		for (var z = 0; z < sonogram3DHeight - 1; z++) {
+			for (var x = 0; x < sonogram3DWidth - 1; x++) {
+				indices[idx++] = z * sonogram3DWidth + x;
+				indices[idx++] = z * sonogram3DWidth + x + 1;
+				indices[idx++] = (z + 1) * sonogram3DWidth + x + 1;
+				indices[idx++] = z * sonogram3DWidth + x;
+				indices[idx++] = (z + 1) * sonogram3DWidth + x + 1;
+				indices[idx++] = (z + 1) * sonogram3DWidth + x;
+			}
+		}
+
+		sonogram3DIBO = gl.createBuffer();
+
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sonogram3DIBO);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+		vertCode = document.getElementById("shader-vs").innerHTML;
+		fragCode = document.getElementById("shader-fs").innerHTML;
+
+		sonogram3DShader = new o3djs.shader.Shader(gl, vertCode, fragCode);
+
+		if (!sonogram3DShader.loaded) {
+			gl = null;
+		}	
+	}
+
+	function updateGL() {
+		yoffset = (yoffset + 1) % (TEXTURE_HEIGHT);
+	}
+
+	function drawGL() {
+		resizeCanvas();
+
+		gl.clearColor(backgroundColor[0], backgroundColor[1], backgroundColor[2], backgroundColor[3]);
+		gl.enable(gl.DEPTH_TEST);
+
+		gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+
+		var dataArray = player.GetOscData(oscType, frequencyBinCount*2);
+
+		for (var i=0;i<frequencyBinCount; i++) {
+			var a = dataArray[i];
+			freqByteData[i] = a<1 ? 1 : a;
+		}
+
+		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, yoffset, freqByteData.length, 1, gl.ALPHA, gl.UNSIGNED_BYTE, freqByteData);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, sonogram3DVBO);
+
+		sonogram3DShader.bind();
+
+		var vertexLoc = sonogram3DShader.gPositionLoc;
+		var texCoordLoc = sonogram3DShader.gTexCoord0Loc;
+
+		gl.uniform1i(sonogram3DShader.heightMapLoc, 0);
+
+		var normalizedYOffset = yoffset / (TEXTURE_HEIGHT - 1);
+		gl.uniform1f(sonogram3DShader.yoffsetLoc, normalizedYOffset);
+
+		var discretizedYOffset = Math.floor(normalizedYOffset * (sonogram3DHeight - 1)) / (sonogram3DHeight - 1);
+		gl.uniform1f(sonogram3DShader.vertexYOffsetLoc, discretizedYOffset);
+
+		gl.uniform1f(sonogram3DShader.verticalScaleLoc, sonogram3DGeometrySize / 4.0);
+
+		// Set up the model, view and projection matrices
+		projection.loadIdentity();
+		projection.perspective(55, canvas.width / canvas.height, 0.01, 100);
+		view.loadIdentity();
+		view.translate(0, 0, -12.0 * cameraController.zoom);
+
+		// Add in camera controller's rotation
+		model.loadIdentity();
+		model.rotate(cameraController.xRot, 1, 0, 0);
+		model.rotate(cameraController.yRot, 0, 1, 0);
+
+		// Compute necessary matrices
+		var mvp = new Matrix4x4();
+		mvp.multiply(model);
+		mvp.multiply(view);
+		mvp.multiply(projection);
+		gl.uniformMatrix4fv(sonogram3DShader.worldViewProjectionLoc, gl.FALSE, mvp.elements);
+
+		var normalMatrix = new Matrix4x4();
+		normalMatrix.multiply(model);
+		normalMatrix.multiply(view);
+		normalMatrix = normalMatrix.inverse();
+		normalMatrix = normalMatrix.transpose();
+		gl.uniformMatrix4fv(sonogram3DShader.normalMatrixLoc, gl.FALSE, normalMatrix.elements);
+
+		texCoordOffset = vbo3DTexCoordOffset;
+
+		gl.uniform1i(sonogram3DShader.frequencyDataLoc, 0);
+
+		// Set up the vertex attribute arrays
+		gl.enableVertexAttribArray(vertexLoc);
+		gl.vertexAttribPointer(vertexLoc, 3, gl.FLOAT, false, 0, 0);
+		
+		// Set up texture coordinates
+		gl.enableVertexAttribArray(texCoordLoc);
+		gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, gl.FALSE, 0, texCoordOffset);
+	
+		// Clear the render area
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+		// Note: this expects the element array buffer to still be bound
+		gl.drawElements(gl.TRIANGLES, sonogram3DNumIndices, gl.UNSIGNED_SHORT, 0);
+
+		// Disable the attribute arrays for cleanliness
+		gl.disableVertexAttribArray(vertexLoc);
+		gl.disableVertexAttribArray(texCoordLoc);
+	}
+
+	function resizeCanvas() {
+		var width = canvas.clientWidth;
+		var height = canvas.clientHeight;
+		if (canvas.width != width || canvas.height != height) {
+			canvas.width = width;
+			canvas.height = height;
+		}
+	}
+
+	function draw() {
+
+		if (!gl) {
+			initGL();
+		}
+
+		if (gl) {
+			drawGL();
+			updateGL();
+			drawVisual = requestAnimationFrame(draw);
+		}
+	}
+
+	function status(e) {
+		var range = document.getElementById("range");
+		var label = document.getElementById('label');
+		if (rangeUpdate) {
+			range.value = e.pos;
+			range.setAttribute('max', e.size);
+		}
+		//label.innerHTML = ( rangeUpdate ? e.pos : range.value ) + '/' + e.size;
+	}
+
+	function loadSong(name) {
+		var xhr = new XMLHttpRequest();
+		xhr.open('GET', 'songs/'+name, true);
+		xhr.overrideMimeType('text/plain; charset=x-user-defined');
+		xhr.onreadystatechange = function(e) {
+			if (this.readyState == 4) {
+				if (this.responseText.length==0) {
+					document.getElementById('label').innerHTML = 'Could not load "'+name+'" (start a server or run chrome --allow-file-access-from-files)';
+					return;
+				}
+				player.Load(this.responseText);
+				if (autostart) {
+					autostart = false;
+					player.Play();
+				}
+				var e = document.getElementById('playlist').getElementsByTagName('option');
+				for (var i=0; i<e.length; i++) {
+					e[i].selected = ( name === e[i].value );
+				}
+				draw();
+			}
+		}
+		xhr.send();
+	}
+
+	var autostart = true;
+	var rangeUpdate = true;
+	var oscType = 1;
+	var player = new BmxPlay();
+
+//	player.SetMasterVolume(0.5);
+	player.SetCallback(status);
+	document.getElementById("play").value = autostart ? "Stop" : "Play";
+	loadSong('default.bmx');
+}
+</script>
+
+</head>
+
+<body>
+
+<div id="player">
+	<select id="playlist">
+		<option>default.bmx</option>
+		<option>atb_gm.bmx</option>
+		<option>axel2.bmx</option>
+		<option>chronos.bmx</option>
+		<option>drumkit.bmx</option>
+		<option>heartsoul.bmx</option>
+		<option>test.bmx</option>
+		<option>test1.bmx</option>
+		<option>test2.bmx</option>
+		<option>theme2.bmx</option>
+		<option>themeless.bmx</option>
+		<option>unafraid.bmx</option>
+		<option>virus.bmx</option>
+		<option>yiruma.bmx</option>
+	</select>
+	<input type=button id="play" value="Play"/>
+	<br/>
+	<input type="range" id="range"/>
+	<div id="label"></div>
+</div>
+
+<canvas id="canvas" width="512" height="512"></canvas>
+
+</body>
+</html>

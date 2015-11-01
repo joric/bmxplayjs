@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bmxplay</title>
+
+<style>
+body { margin: auto; text-align: center; margin-top: 80px; }
+#player { width: 756px; margin: auto; padding: 0; }
+#canvas { margin-bottom: 5px; background-color: #000; }
+#play { width: 10%; float: left; }
+#label { width: 10%; float: left; }
+#files { width: 20%; float: left; margin-right: 5px; margin-top: 2px; }
+#range { width: 302px; padding: 0px; margin: 0px; }
+#render { width: 15%; float: right; }
+</style>
+
+<script src="bmxplay.min.js"></script>
+
+<script>
+window.onload = function() {
+	var player = new BmxPlay();
+
+	var songName = "default.bmx";
+	var songData = null;
+	var autostart = false;
+	var rangeUpdate = true;
+	var oscType = 1;
+	player.SetCallback(status);
+	document.getElementById("play").value = autostart ? "Stop" : "Play";
+	loadSong(songName);
+	draw();
+
+	document.getElementById("play").onclick = function() { this.value = (player.IsPlaying() ? player.Stop() : player.Play()) ? "Stop" : "Play"; }
+	document.getElementById("range").onchange = function() { player.SetPos(this.value); rangeUpdate = true; }
+	document.getElementById("range").onmousedown = function() { rangeUpdate = false; }
+	document.getElementById("canvas").onclick = function() { oscType = (oscType+1) % 2; }
+	document.getElementById("files").onchange = function() { loadSong(this.value); }
+
+	document.getElementById("render").onclick = function() {
+		this.disabled = true;
+		var p = new BmxPlay();
+		p.Load(songData);
+		p.Render(function(data) {
+			var blob = new Blob([data], {type: "audio/wav"});
+			var filename = songName.replace(".bmx",".wav");
+			if(window.navigator.msSaveOrOpenBlob) {
+				window.navigator.msSaveOrOpenBlob(blob, filename);
+			} else {
+				var a = document.body.appendChild(document.createElement("a"));
+				a.href = URL.createObjectURL(blob);
+				a.download = filename;
+				a.click();
+				a.remove();
+			}
+			document.getElementById("render").disabled = false;
+		});
+	}
+
+	function draw(ts) {
+		drawVisual = requestAnimationFrame(draw);
+		var canvas = document.getElementById("canvas");
+		var dataArray = player.GetOscData(oscType, canvas.width * (oscType ? 2 : 1));
+		var ctx = canvas.getContext("2d");
+		ctx.fillStyle = "#000";
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		ctx.strokeStyle = "#4f4";
+		ctx.beginPath();
+		for(var x = 0; x < canvas.width; x++) {
+			var y = canvas.height - dataArray[x] * canvas.height/256;
+			x==0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+		}
+		ctx.stroke();
+	}
+
+	function status(e) {
+		var range = document.getElementById("range");
+		var label = document.getElementById("label");
+		if (rangeUpdate) {
+			range.value = e.pos;
+			range.max = e.size;
+		}
+		label.textContent = (rangeUpdate ? e.pos : range.value) + "/" + e.size;
+	}
+
+	function loadSong(name) {
+		var xhr = new XMLHttpRequest();
+		xhr.open("GET", "songs/"+name, true);
+		xhr.overrideMimeType("text/plain; charset=x-user-defined");
+		xhr.onreadystatechange = function(e) {
+			if (this.readyState == 4) {
+				songName = name;
+				songData = this.responseText;
+				player.Load(this.responseText);
+				if (autostart) {
+					autostart = false;
+					player.Play();
+				}
+				var e = document.getElementById("files").getElementsByTagName("option");
+				for (var i=0; i<e.length; i++) {
+					e[i].selected = ( name === e[i].value );
+				}
+			}
+		}
+		xhr.send();
+	}
+}
+
+</script>
+
+</head>
+<body>
+
+<h1>BmxplayJS</h1>
+
+<div id="player">
+
+	<canvas id="canvas" width="756" height="324"></canvas>
+
+	<select id="files">
+		<option>default.bmx</option>
+		<option>atb_gm.bmx</option>
+		<option>axel2.bmx</option>
+		<option>chronos.bmx</option>
+		<option>drumkit.bmx</option>
+		<option>heartsoul.bmx</option>
+		<option>test.bmx</option>
+		<option>test1.bmx</option>
+		<option>test2.bmx</option>
+		<option>theme2.bmx</option>
+		<option>themeless.bmx</option>
+		<option>unafraid.bmx</option>
+		<option>virus.bmx</option>
+		<option>yiruma.bmx</option>
+	</select>
+
+	<input type="button" id="play" value="Play"/>
+	<div id="label">0/0</div>
+	<input type="range" id="range" value="0"/>
+	<input type="button" id="render" value="Export WAV"/>
+</div>
+
+</body>
+</html>

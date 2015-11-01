@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bmxplay</title>
+
+<script src="bmxplay.min.js"></script>
+
+<script>
+window.onload = function() {
+
+	function renderStatus(e) {
+		document.title = ~~((e.pos+1)*100/e.size) + "%";
+	}
+
+	function loadSong(name) {
+		document.getElementById("files").disabled = true;
+		var xhr = new XMLHttpRequest();
+		xhr.open("GET", "songs/"+name, true);
+		xhr.overrideMimeType('text/plain; charset=x-user-defined');
+		xhr.onreadystatechange = function(e) {
+			if (this.readyState == 4) {
+				var p = new BmxPlay();
+				p.SetCallback(renderStatus);
+				p.Load(this.responseText);
+				p.Render(function(data) {
+					var blob = new Blob([data], {type: "audio/wav"});
+					var dataURI = URL.createObjectURL(blob);
+					document.getElementById("audio").src = dataURI;
+					document.getElementById("files").disabled = false;
+					document.title = "Bmxplay";
+				});
+			}
+		}
+		xhr.send();
+	}
+
+	document.getElementById("files").onchange = function() { loadSong(this.value); }
+	loadSong("default.bmx");
+}
+</script>
+
+</head>
+<body>
+
+<audio id="audio" controls loop autoplay>
+	<em>Sorry, your browser doesn't support HTML5 audio.</em>
+</audio>
+
+<div id="player">
+	<select id="files">
+		<option>default.bmx</option>
+		<option>atb_gm.bmx</option>
+		<option>axel2.bmx</option>
+		<option>chronos.bmx</option>
+		<option>drumkit.bmx</option>
+		<option>heartsoul.bmx</option>
+		<option>test.bmx</option>
+		<option>test1.bmx</option>
+		<option>test2.bmx</option>
+		<option>theme2.bmx</option>
+		<option>themeless.bmx</option>
+		<option>unafraid.bmx</option>
+		<option>virus.bmx</option>
+		<option>yiruma.bmx</option>
+	</select>
+</div>
+
+</body>
+</html>
