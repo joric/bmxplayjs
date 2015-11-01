@@ -19,13 +19,13 @@ npm install && npm run-script compile
 ## API
 
 - `Load(bytes: string): number`
-- `SetCallback(callback: function({pos:integer, size:integer})): void`
+- `SetCallback(callback: function({pos:number, size:number})): void`
 - `Play(): boolean`
 - `Stop(): boolean`
-- `SetPos(pos: integer): void`
+- `SetPos(pos: number): void`
 - `IsPlaying(): boolean`
-- `Render(callback: function(data: Uint16Array), repeats: integer): void`
-- `GetOscData(type: number, size: number, smooth: number): Uint8Array`
+- `Render(callback: function(data: array), repeats: number): void`
+- `GetOscData(type: number, size: number, smooth: number): array`
 
 ## License
 
