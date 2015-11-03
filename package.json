@@ -1,21 +1,27 @@
 {
-	"name": "BmxplayJS",
-	"version": "0.0.7",
-	"author": "Joric",
-	"license": "MIT",
-	"repository": {
-		"type": "git",
-		"url": "git://git.code.sf.net/p/bmxplay/bmxplayjs"
-	},
-	"devDependencies": {
-		"browserify": "4.1.11",
-		"uglify-js": "2.4.13"
-	},
-	"scripts": {
-		"xcompile": "browserify ./src/BmxPlay.js -s BmxPlay > bmxplay.js",
-		"compile": "browserify ./src/BmxPlay.js -s BmxPlay | uglifyjs --compress --mangle > bmxplay.min.js"
-	},
-	"dependencies": {
-		"worker-timer": "0.1.1"
-	}
+  "name": "bmxplayjs",
+  "version": "0.0.7",
+  "author": "Joric",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git://git.code.sf.net/p/bmxplay/bmxplayjs"
+  },
+  "devDependencies": {
+    "browserify": "4.1.11",
+    "uglify-js": "2.4.13"
+  },
+  "scripts": {
+    "xcompile": "browserify ./src/BmxPlay.js -s BmxPlay > bmxplay.js",
+    "compile": "browserify ./src/BmxPlay.js -s BmxPlay | uglifyjs --compress --mangle > bmxplay.min.js"
+  },
+  "dependencies": {
+    "worker-timer": "0.1.1"
+  },
+  "description": "Bmxplay, JavaScript version. Written in \"modern\" OOP with closures (where applicable).",
+  "main": "bmxplay.min.js",
+  "keywords": [
+    "realtime",
+    "synth"
+  ]
 }
