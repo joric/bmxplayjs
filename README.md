@@ -6,7 +6,7 @@ For C version and Buzz-compatible machines see the original bmxplay project.
 
 ## Demo
 
-[Online Demo](http://bmxplay.sourceforge.net)
+[http://bmxplay.sourceforge.net](http://bmxplay.sourceforge.net)
 
 ## Installation
 
