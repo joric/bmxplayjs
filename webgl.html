@@ -869,7 +869,7 @@ window.onload = function() {
 	var oscType = 1;
 	var player = new BmxPlay();
 
-//	player.SetMasterVolume(0.5);
+	player.SetMasterVolume(0.5);
 	player.SetCallback(status);
 	document.getElementById("play").value = autostart ? "Stop" : "Play";
 	loadSong('default.bmx');

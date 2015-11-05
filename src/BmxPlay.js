@@ -40,6 +40,7 @@ var BmxPlay = function() {
 	var soundChannel = null;
 
 	var playing = false;
+	var volume = 1.0;
 	var songData = null;
 
 	var BUFSIZE = SamplesPerSec;
@@ -443,7 +444,7 @@ var BmxPlay = function() {
 	}
 
 	function sampleData(e) {
-		var mastervolume = 1.0 / 32767.0;
+		var mastervolume = volume / 32767.0;
 		for (var i = 0,j=0; i < BUFSIZE; i++) {
 			e.data.getChannelData(0)[i] = buf[j++] * mastervolume;
 			e.data.getChannelData(1)[i] = buf[j++] * mastervolume;
@@ -505,6 +506,10 @@ var BmxPlay = function() {
 			PosInTick = 0;
 			BmxWorkBuffer(buf, BUFSIZE);
 		}
+	}
+
+	this.SetMasterVolume = function(vol) {
+		volume = vol;
 	}
 
 	this.GetOscData = function(type, size, smooth) {

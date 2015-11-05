@@ -27,6 +27,7 @@ window.onload = function() {
 	var rangeUpdate = true;
 	var oscType = 1;
 	player.SetCallback(status);
+	player.SetMasterVolume(0.5);
 	document.getElementById("play").value = autostart ? "Stop" : "Play";
 	loadSong(songName);
 	draw();
