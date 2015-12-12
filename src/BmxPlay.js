@@ -41,6 +41,7 @@ var BmxPlay = function() {
 
 	var playing = false;
 	var volume = 1.0;
+	var mastervolume = 1.0;
 	var songData = null;
 
 	var BUFSIZE = SamplesPerSec;
@@ -157,6 +158,10 @@ var BmxPlay = function() {
 						m.events = [];
 						machines.push(m);
 						mdata.push(msd);
+
+						if (type == MT_MASTER) {
+							mastervolume = 1.0 - (m.gp(0)+m.gp(1)*256)/16384.0;
+						}
 					}
 
 				break;
@@ -444,10 +449,10 @@ var BmxPlay = function() {
 	}
 
 	function sampleData(e) {
-		var mastervolume = volume / 32767.0;
+		var amp = volume * mastervolume / 32767.0;
 		for (var i = 0,j=0; i < BUFSIZE; i++) {
-			e.data.getChannelData(0)[i] = buf[j++] * mastervolume;
-			e.data.getChannelData(1)[i] = buf[j++] * mastervolume;
+			e.data.getChannelData(0)[i] = buf[j++] * amp;
+			e.data.getChannelData(1)[i] = buf[j++] * amp;
 		}
 		BmxWorkBuffer(buf, BUFSIZE);
 	}
@@ -509,6 +514,10 @@ var BmxPlay = function() {
 	}
 
 	this.SetMasterVolume = function(vol) {
+		mastervolume = vol;
+	}
+
+	this.SetVolume = function(vol) {
 		volume = vol;
 	}
 

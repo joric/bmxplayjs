@@ -24,7 +24,7 @@ npm install && npm run-script compile
 - `Stop(): boolean`
 - `SetPos(pos: number): void`
 - `IsPlaying(): boolean`
-- `SetMasterVolume(vol: number): void`
+- `SetVolume(vol: number): void`
 - `Render(callback: function(data: array), repeats: number): void`
 - `GetOscData(type: number, size: number, smooth: number): array`
 
