@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "browserify": "4.1.11",
-    "uglify-js": "2.4.13"
+    "uglify-js": "2.6.0"
   },
   "scripts": {
     "xcompile": "browserify ./src/BmxPlay.js -s BmxPlay > bmxplay.js",
