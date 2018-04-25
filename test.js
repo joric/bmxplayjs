@@ -10,6 +10,6 @@ p.SetCallback(function(e) {
 p.Load(fs.readFileSync('./songs/'+songName).toString('binary'));
 
 p.Render(function(data) {
-	fs.writeFileSync(songName.replace(".bmx",".wav"), new Buffer(data.buffer));
+	fs.writeFileSync(songName.replace(".bmx",".wav"), Buffer.from(data.buffer));
 });
 
