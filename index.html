@@ -7,139 +7,158 @@
 <style>
 body { margin: auto; text-align: center; margin-top: 80px; }
 #player { width: 756px; margin: auto; padding: 0; }
-#canvas { margin-bottom: 5px; background-color: #000; }
+#canvas { margin-bottom: 10px; background-color: #000; }
 #play { width: 10%; float: left; }
 #label { width: 10%; float: left; }
 #files { width: 20%; float: left; margin-right: 5px; margin-top: 2px; }
 #range { width: 302px; padding: 0px; margin: 0px; }
 #render { width: 15%; float: right; }
+.play { position: relative; border: 5px solid #fff; width: 72px; height: 72px; background-color: transparent; border-radius: 50%; top: -36px; left: -36px; cursor: pointer; }
+.play:before { position: absolute;  left: 28px; top: 20px; content:''; border-left: 24px solid white; border-top: 16px solid transparent; border-right: 16px solid transparent; border-bottom: 16px solid transparent; }
+.buttons { position: relative; }
+.play { position: absolute; left: 338px; top: 122px; }
 </style>
-
 <script src="bmxplay.min.js"></script>
-
-<script>
-window.onload = function() {
-	var player = new BmxPlay();
-
-	var songName = "default.bmx";
-	var songData = null;
-	var autostart = false;
-	var rangeUpdate = true;
-	var oscType = 1;
-	player.SetCallback(status);
-	player.SetVolume(0.5);
-	document.getElementById("play").value = autostart ? "Stop" : "Play";
-	loadSong(songName);
-	draw();
-
-	document.getElementById("play").onclick = function() { this.value = (player.IsPlaying() ? player.Stop() : player.Play()) ? "Stop" : "Play"; }
-	document.getElementById("range").onchange = function() { player.SetPos(this.value); rangeUpdate = true; }
-	document.getElementById("range").onmousedown = function() { rangeUpdate = false; }
-	document.getElementById("canvas").onclick = function() { oscType = (oscType+1) % 2; }
-	document.getElementById("files").onchange = function() { loadSong(this.value); }
-
-	document.getElementById("render").onclick = function() {
-		this.disabled = true;
-		var p = new BmxPlay();
-		p.Load(songData);
-		p.Render(function(data) {
-			var blob = new Blob([data], {type: "audio/wav"});
-			var filename = songName.replace(".bmx",".wav");
-			if(window.navigator.msSaveOrOpenBlob) {
-				window.navigator.msSaveOrOpenBlob(blob, filename);
-			} else {
-				var a = document.body.appendChild(document.createElement("a"));
-				a.href = URL.createObjectURL(blob);
-				a.download = filename;
-				a.click();
-				a.remove();
-			}
-			document.getElementById("render").disabled = false;
-		});
-	}
-
-	function draw(ts) {
-		drawVisual = requestAnimationFrame(draw);
-		var canvas = document.getElementById("canvas");
-		var dataArray = player.GetOscData(oscType, canvas.width * (oscType ? 2 : 1));
-		var ctx = canvas.getContext("2d");
-		ctx.fillStyle = "#000";
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
-		ctx.strokeStyle = "#4f4";
-		ctx.beginPath();
-		for(var x = 0; x < canvas.width; x++) {
-			var y = canvas.height - dataArray[x] * canvas.height/256;
-			x==0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-		}
-		ctx.stroke();
-	}
-
-	function status(e) {
-		var range = document.getElementById("range");
-		var label = document.getElementById("label");
-		if (rangeUpdate) {
-			range.value = e.pos;
-			range.max = e.size;
-		}
-		label.textContent = (rangeUpdate ? e.pos : range.value) + "/" + e.size;
-	}
-
-	function loadSong(name) {
-		var xhr = new XMLHttpRequest();
-		xhr.open("GET", "songs/"+name, true);
-		xhr.overrideMimeType("text/plain; charset=x-user-defined");
-		xhr.onreadystatechange = function(e) {
-			if (this.readyState == 4) {
-				songName = name;
-				songData = this.responseText;
-				player.Load(this.responseText);
-				if (autostart) {
-					autostart = false;
-					player.Play();
-				}
-				var e = document.getElementById("files").getElementsByTagName("option");
-				for (var i=0; i<e.length; i++) {
-					e[i].selected = ( name === e[i].value );
-				}
-			}
-		}
-		xhr.send();
-	}
-}
-
-</script>
-
 </head>
 <body>
 
-<h1>BmxplayJS</h1>
+<h1>Bmxplay</h1>
+
+<p>Tiny player (up to 3 kb) and demo tracks for <a href="http://www.jeskola.net/buzz/">Jescola's Buzz</a> by Joric^Proxium.
+<br>First released in 64k intro <a href="http://pouet.net/prod.php?which=7468">Yo-08</a> (test1.bmx) which took first place at Paradox 2002.
+<br/>Last release is <a href="http://downloads.sourceforge.net/project/bmxplay/demo/0.4.5/bmxplay-demo-0.4.5.zip">0.4.5</a> (added linux waveout driver and linux binary).</p>
 
 <div id="player">
+    <div class="buttons"><div class="play" id="_play"></div></div>
+    <canvas id="canvas" width="756" height="324"></canvas>
+    <select id="files">
+        <option>default.bmx</option>
+        <option>atb_gm.bmx</option>
+        <option>axel2.bmx</option>
+        <option>chronos.bmx</option>
+        <option>drumkit.bmx</option>
+        <option>heartsoul.bmx</option>
+        <option>test.bmx</option>
+        <option>test1.bmx</option>
+        <option>test2.bmx</option>
+        <option>theme1.bmx</option>
+        <option>theme2.bmx</option>
+        <option>themeless.bmx</option>
+        <option>unafraid.bmx</option>
+        <option>virus.bmx</option>
+        <option>yiruma.bmx</option>
+        <option>getback.bmx</option>
+    </select>
 
-	<canvas id="canvas" width="756" height="324"></canvas>
-
-	<select id="files">
-		<option>default.bmx</option>
-		<option>atb_gm.bmx</option>
-		<option>axel2.bmx</option>
-		<option>chronos.bmx</option>
-		<option>drumkit.bmx</option>
-		<option>heartsoul.bmx</option>
-		<option>test.bmx</option>
-		<option>test1.bmx</option>
-		<option>test2.bmx</option>
-		<option>theme2.bmx</option>
-		<option>themeless.bmx</option>
-		<option>unafraid.bmx</option>
-		<option>virus.bmx</option>
-		<option>yiruma.bmx</option>
-	</select>
-
-	<input type="button" id="play" value="Play"/>
-	<div id="label">0/0</div>
-	<input type="range" id="range" value="0"/>
-	<input type="button" id="render" value="Export WAV"/>
+    <input type="button" id="play" value="Play"/>
+    <div id="label">0/0</div>
+    <input type="range" id="range" value="0"/>
+    <input type="button" id="render" value="Render WAV..."/>
 </div>
 
+<script>
+onload = function() {
+
+    function updateUI(playing) {
+        document.getElementById("play").value = playing ? "Stop" : "Play";
+        document.getElementById("_play").style.visibility = playing ? "hidden" : "visible";
+    }
+
+    function play() { updateUI(player.Play()); }
+    function pause() { updateUI(player.Stop()); }
+    function toggle() { player.IsPlaying() ? pause() : play(); }
+    document.getElementById("canvas").onclick = toggle;
+    document.getElementById("play").onclick = toggle;
+    document.getElementById("_play").onclick = toggle;
+    document.getElementById("range").onchange = function() { player.SetPos(this.value); rangeUpdate = true; }
+    document.getElementById("range").onmousedown = function() { rangeUpdate = false; }
+    document.getElementById("files").onchange = function() { location.hash = this.value; loadSong(this.value); }
+
+    document.getElementById("render").onclick = function() {
+        this.disabled = true;
+        var p = new BmxPlay();
+        p.Load(songData);
+        p.Render(function(data) {
+            var blob = new Blob([data], {type: "audio/wav"});
+            var filename = songName.replace(".bmx",".wav");
+            if(navigator.msSaveOrOpenBlob) {
+                navigator.msSaveOrOpenBlob(blob, filename);
+            } else {
+                var a = document.body.appendChild(document.createElement("a"));
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                a.remove();
+            }
+            document.getElementById("render").disabled = false;
+        });
+    }
+
+    function draw(ts) {
+        requestAnimationFrame(draw);
+        var canvas = document.getElementById("canvas");
+        var dataArray = player.GetOscData(oscType, canvas.width * (oscType ? 2 : 1));
+        var ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#4f4";
+        ctx.beginPath();
+        for(var x = 0; x < canvas.width; x++) {
+            var y = canvas.height - dataArray[x] * canvas.height/256;
+            x==0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+
+    function status(e) {
+        var range = document.getElementById("range");
+        var label = document.getElementById("label");
+        if (rangeUpdate) {
+            range.value = e.pos;
+            range.max = e.size;
+        }
+        label.textContent = (rangeUpdate ? e.pos : range.value) + "/" + e.size;
+    }
+
+    function loadSong(name) {
+        document.getElementById("files").disabled = true;
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "songs/"+name, true);
+        xhr.overrideMimeType("text/plain; charset=x-user-defined");
+        xhr.onreadystatechange = function(e) {
+            if (this.readyState == 4) {
+                songName = name;
+                songData = this.responseText;
+                player.Load(songData);
+                if (autostart) {
+                    autostart = false;
+                    play();
+                }
+                var e = document.getElementById("files").getElementsByTagName("option");
+                for (var i=0; i<e.length; i++) {
+                    e[i].selected = ( name === e[i].value );
+                }
+            }
+            document.getElementById("files").disabled = false;
+        }
+        xhr.send();
+    }
+
+    var songName = location.hash ? location.hash.slice(1) : "default.bmx";
+    console.log(songName);
+    document.getElementById('files').value = songName;
+    var songData = null;
+    var autostart = false;
+    var rangeUpdate = true;
+    var oscType = 1;
+    var player = new BmxPlay();
+
+    player.SetVolume(0.5);
+    player.SetCallback(status);
+    updateUI(autostart);
+    loadSong(songName);
+    draw();
+}
+</script>
 </body>
 </html>

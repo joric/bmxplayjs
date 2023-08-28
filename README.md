@@ -6,7 +6,7 @@ For C version and Buzz-compatible machines see the original [bmxplay](https://gi
 
 ## Demo
 
-[http://bmxplay.sourceforge.net](http://bmxplay.sourceforge.net)
+[http://joric.github.io/bmxplayjs](http://joric.github.io/bmxplayjs)
 
 ## Installation
 
