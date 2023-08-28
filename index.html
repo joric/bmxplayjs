@@ -123,7 +123,7 @@ onload = function() {
     function loadSong(name) {
         document.getElementById("files").disabled = true;
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", "songs/"+name, true);
+        xhr.open("GET", "https://joric.github.io/bmxplay/bin/"+name, true);
         xhr.overrideMimeType("text/plain; charset=x-user-defined");
         xhr.onreadystatechange = function(e) {
             if (this.readyState == 4) {
