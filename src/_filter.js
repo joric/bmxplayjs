@@ -26,7 +26,6 @@ function _filter() {
     param3 = 0;
     buf0 = 0;
     buf1 = 0;
-    k = 44100.0 / this.pMasterInfo.SamplesPerSec;
   }
 
   this.Tick = function() {
@@ -34,9 +33,9 @@ function _filter() {
     param2 = this.gp(1, param2);
     param3 = this.gp(2, param3);
 
-    f = param1 / 128.0 * 0.99 * k;
-    q = param2 / 128.0 * 0.98 * k;
-    d = param3 / 128.0 * k;
+    f = param1 / 128.0 * 0.99;
+    q = param2 / 128.0 * 0.98;
+    d = param3 / 128.0;
   }
 
   this.Work = function(psamples, numsamples, channels) {
