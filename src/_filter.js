@@ -26,6 +26,7 @@ function _filter() {
     param3 = 0;
     buf0 = 0;
     buf1 = 0;
+    f = q = d = 0;
   }
 
   this.Tick = function() {
@@ -33,9 +34,9 @@ function _filter() {
     param2 = this.gp(1, param2);
     param3 = this.gp(2, param3);
 
-    f = param1 / 128.0 * 0.99;
-    q = param2 / 128.0 * 0.98;
-    d = param3 / 128.0;
+    if (param1!=0xFF) f = param1 / 128.0 * 0.99;
+    if (param2!=0xFF) q = param2 / 128.0 * 0.98;
+    if (param3!=0xFF) d = param3 / 128.0;
   }
 
   this.Work = function(psamples, numsamples, channels) {
@@ -50,8 +51,10 @@ function _filter() {
       buf1 = buf1 + f * (buf0 - buf1);
 
       psamples[i] = buf1;
+    }
 
-      // distortion
+    // distortion
+    for (var i = 0; i < numsamples; ++i) {
       if (d != 0) {
         var amp = 1.0 / (1.0 - d);
         var a = psamples[i];
