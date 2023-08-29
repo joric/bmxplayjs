@@ -99,7 +99,7 @@ function _xi() {
     if (note != 0) {
       freq = this.getFreq(note);
       sn = 0;
-      dsn = ~~(freq * 256.0 / basefreq);
+      dsn = ~~(freq * 256.0 / basefreq * 44100 / this.pMasterInfo.SamplesPerSec);
       this.startenv();
       play = true;
     }
