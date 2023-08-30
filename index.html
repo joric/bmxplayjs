@@ -40,18 +40,24 @@ body { margin: 0; padding:0; text-align: center; background-color: white;}
   display: inline-block;
 }
 
-.chart-container {
+.player-container {
   width: 756px;
   height: 324px;
   margin-left: auto;
   margin-right: auto;
   position: relative;
-
-  border-radius: 10px;
-
 }
 
 #canvas { background-color: #000; width: 100%; height: 100%; }
+
+.canvas-container {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  background-color: white;
+  border: 1px solid #000;
+  overflow: hidden;
+}
 
 #files  { width: 25%; }
 #play   { width: 15%; }
@@ -64,11 +70,11 @@ body { margin: 0; padding:0; text-align: center; background-color: white;}
   flex-direction: row;
   width: 100%;
   justify-content: space-between;
-  padding-top: 1vh;
+  padding-top: 1.5vh;
 }
 
 @media (max-width: 900px) {
-  .chart-container {
+  .player-container {
     width: 600px;
     height: 220px;
   }
@@ -83,7 +89,7 @@ body { margin: 0; padding:0; text-align: center; background-color: white;}
     width: 100%;
     text-align: center;
   }
-  .chart-container {
+  .player-container {
     padding-top: 0vh;
     width: 80vw;
     height: 60vh;
@@ -99,12 +105,14 @@ body { margin: 0; padding:0; text-align: center; background-color: white;}
 <div id="player" class="container">
   <h1>BmxplayJS</h1>
 
-  <div class="chart-container">
+  <div class="player-container">
 
-    <div class="ocd">
-      <div class="play" id="_play"></div>
+    <div class="canvas-container">
+      <div class="ocd">
+        <div class="play" id="_play"></div>
+      </div>
+      <canvas id="canvas"></canvas>
     </div>
-    <canvas id="canvas"></canvas>
 
     <div class="controls">
         <select id="files">
