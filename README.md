@@ -2,7 +2,7 @@
 
 Bmxplay, JavaScript version. Written in "modern" OOP with closures (where applicable).
 
-For C version and Buzz-compatible machines see the original [bmxplay](https://github.com/joric/bmxplay) project.
+For C version and Buzz-compatible machines see my original [bmxplay](https://github.com/joric/bmxplay) project.
 
 ## Demo
 
