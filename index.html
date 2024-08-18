@@ -194,12 +194,12 @@ onload = function() {
           description: 'BMX Files',
           accept: {'application/octet-stream': ['.bmx']},
         }],
-      })
-      .catch(enableButton)
+      }).catch(enableButton)
+
       var p = new BmxPlay();
       p.Load(songData);
       p.Render(function(data) {
-          render(fileHandle, data).then(enableButton).catch(enableButton)
+          render(fileHandle, data).finally(enableButton)
       });
     }
 
