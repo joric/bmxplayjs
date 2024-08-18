@@ -176,27 +176,36 @@ onload = function() {
     document.getElementById("range").onmousedown = function() { rangeUpdate = false; }
     document.getElementById("files").onchange = function() { location.hash = this.value; loadSong(this.value); }
 
-    async function saveToFile(data, filename) {
+    function enableButton(e) {
+      //if (e) { console.log('---error logged---:', e) };
+      document.getElementById("render").disabled = false;
+    }
+
+    async function render(fileHandle, data) {
+        const writableStream = await fileHandle.createWritable();
+        await writableStream.write(data);
+        await writableStream.close();
+    }
+
+    async function saveToFile(filename) {
       const fileHandle = await window.showSaveFilePicker({
         suggestedName: filename,
         types: [{
           description: 'BMX Files',
           accept: {'application/octet-stream': ['.bmx']},
         }],
+      })
+      .catch(enableButton)
+      var p = new BmxPlay();
+      p.Load(songData);
+      p.Render(function(data) {
+          render(fileHandle, data).then(enableButton).catch(enableButton)
       });
-      const writableStream = await fileHandle.createWritable();
-      await writableStream.write(data);
-      await writableStream.close();
     }
 
     document.getElementById("render").onclick = function() {
         this.disabled = true;
-        var p = new BmxPlay();
-        p.Load(songData);
-        p.Render(function(data) {
-            saveToFile(data, songName.replace(".bmx",".wav"));
-            document.getElementById("render").disabled = false;
-        });
+        saveToFile(songName.replace(".bmx",".wav"));
     }
 
     function draw(ts) {
