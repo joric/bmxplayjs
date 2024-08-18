@@ -199,7 +199,7 @@ onload = function() {
       var p = new BmxPlay();
       p.Load(songData);
       p.Render(function(data) {
-          render(fileHandle, data).finally(enableButton)
+          render(fileHandle, data).finally(enableButton).catch(enableButton)
       });
     }
 
