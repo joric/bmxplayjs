@@ -176,22 +176,25 @@ onload = function() {
     document.getElementById("range").onmousedown = function() { rangeUpdate = false; }
     document.getElementById("files").onchange = function() { location.hash = this.value; loadSong(this.value); }
 
+    async function saveToFile(data, filename) {
+      const fileHandle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: 'BMX Files',
+          accept: {'application/octet-stream': ['.bmx']},
+        }],
+      });
+      const writableStream = await fileHandle.createWritable();
+      await writableStream.write(data);
+      await writableStream.close();
+    }
+
     document.getElementById("render").onclick = function() {
         this.disabled = true;
         var p = new BmxPlay();
         p.Load(songData);
         p.Render(function(data) {
-            var blob = new Blob([data], {type: "audio/wav"});
-            var filename = songName.replace(".bmx",".wav");
-            if(navigator.msSaveOrOpenBlob) {
-                navigator.msSaveOrOpenBlob(blob, filename);
-            } else {
-                var a = document.body.appendChild(document.createElement("a"));
-                a.href = URL.createObjectURL(blob);
-                a.download = filename;
-                a.click();
-                a.remove();
-            }
+            saveToFile(data, songName.replace(".bmx",".wav"));
             document.getElementById("render").disabled = false;
         });
     }
