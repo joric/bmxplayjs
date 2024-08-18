@@ -182,9 +182,9 @@ onload = function() {
     }
 
     async function render(fileHandle, data) {
-        const writableStream = await fileHandle.createWritable();
-        await writableStream.write(data);
-        await writableStream.close();
+      const writableStream = await fileHandle.createWritable();
+      await writableStream.write(data);
+      await writableStream.close();
     }
 
     async function saveToFile(filename) {
@@ -194,13 +194,13 @@ onload = function() {
           description: 'BMX Files',
           accept: {'application/octet-stream': ['.bmx']},
         }],
-      }).catch(enableButton)
-
-      var p = new BmxPlay();
-      p.Load(songData);
-      p.Render(function(data) {
-          render(fileHandle, data).finally(enableButton).catch(enableButton)
-      });
+      }).catch(enableButton).then(handle => {
+        if (handle) {
+          let p = new BmxPlay();
+          p.Load(songData);
+          p.Render(data => { render(handle, data).finally(enableButton) });
+        }
+      })
     }
 
     document.getElementById("render").onclick = function() {
