@@ -151,7 +151,7 @@ h1 {
         <input type="button" id="play" value="Play"/>
         <span id="label">0/0</span>
         <input type="range" id="range" value="0"/>
-        <input type="button" id="render" value="Download WAV"/>
+        <input type="button" id="render" value="Export to WAV"/>
     </div>
 
   </div>
@@ -191,8 +191,8 @@ onload = function() {
       const fileHandle = await window.showSaveFilePicker({
         suggestedName: filename,
         types: [{
-          description: 'BMX Files',
-          accept: {'application/octet-stream': ['.bmx']},
+          description: 'WAV Files',
+          accept: {'audio/wav': ['.wav']},
         }],
       }).catch(enableButton).then(handle => {
         if (handle) {
